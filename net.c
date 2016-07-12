@@ -92,7 +92,7 @@ static void __redisSetErrorFromErrno(redisContext *c, int type, const char *pref
 
 static int redisSetReuseAddr(redisContext *c) {
     int on = 1;
-    if (setsockopt(c->fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) == -1) {
+    if (setsockopt(c->fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&on, sizeof(on)) == -1) {
         __redisSetErrorFromErrno(c,REDIS_ERR_IO,NULL);
         redisContextCloseFd(c);
         return REDIS_ERR;
@@ -134,7 +134,7 @@ int redisKeepAlive(redisContext *c, int interval) {
     int val = 1;
     int fd = c->fd;
 
-    if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(val)) == -1){
+    if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (const char*)&val, sizeof(val)) == -1){
         __redisSetError(c,REDIS_ERR_OTHER,strerror(errno));
         return REDIS_ERR;
     }
@@ -174,7 +174,7 @@ int redisKeepAlive(redisContext *c, int interval) {
 
 static int redisSetTcpNoDelay(redisContext *c) {
     int yes = 1;
-    if (setsockopt(c->fd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes)) == -1) {
+    if (setsockopt(c->fd, IPPROTO_TCP, TCP_NODELAY, (const char*)&yes, sizeof(yes)) == -1) {
         __redisSetErrorFromErrno(c,REDIS_ERR_IO,"setsockopt(TCP_NODELAY)");
         redisContextCloseFd(c);
         return REDIS_ERR;
@@ -240,7 +240,7 @@ int redisCheckSocketError(redisContext *c) {
     int err = 0;
     socklen_t errlen = sizeof(err);
 
-    if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, &err, &errlen) == -1) {
+    if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, (char*)&err, &errlen) == -1) {
         __redisSetErrorFromErrno(c,REDIS_ERR_IO,"getsockopt(SO_ERROR)");
         return REDIS_ERR;
     }
@@ -255,11 +255,11 @@ int redisCheckSocketError(redisContext *c) {
 }
 
 int redisContextSetTimeout(redisContext *c, const struct timeval tv) {
-    if (setsockopt(c->fd,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv)) == -1) {
+    if (setsockopt(c->fd,SOL_SOCKET,SO_RCVTIMEO,(const char*)&tv,sizeof(tv)) == -1) {
         __redisSetErrorFromErrno(c,REDIS_ERR_IO,"setsockopt(SO_RCVTIMEO)");
         return REDIS_ERR;
     }
-    if (setsockopt(c->fd,SOL_SOCKET,SO_SNDTIMEO,&tv,sizeof(tv)) == -1) {
+    if (setsockopt(c->fd,SOL_SOCKET,SO_SNDTIMEO,(const char*)&tv,sizeof(tv)) == -1) {
         __redisSetErrorFromErrno(c,REDIS_ERR_IO,"setsockopt(SO_SNDTIMEO)");
         return REDIS_ERR;
     }
