@@ -5,6 +5,8 @@
 * https://github.com/koenvandesande/hiredis
 
 
+# BUILD STATUS
+
 [![Build Status](https://travis-ci.org/redis/hiredis.png)](https://travis-ci.org/redis/hiredis)
 
 # HIREDIS
