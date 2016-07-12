@@ -1,7 +1,8 @@
-[![Build Status](https://travis-ci.org/redis/hiredis.png)](https://travis-ci.org/redis/hiredis)
 
 * https://github.com/redis/hiredis (0.13.3)
 * https://github.com/koenvandesande/hiredis
+
+[![Build Status](https://travis-ci.org/redis/hiredis.png)](https://travis-ci.org/redis/hiredis)
 
 # HIREDIS
 
