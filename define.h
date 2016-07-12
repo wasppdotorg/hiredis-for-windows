@@ -2,12 +2,6 @@
 #ifndef DEFINE_H
 #define DEFINE_H
 
-#include "hiredis.h"
-
-#if defined( _MSC_VER ) && !defined( __cplusplus )
-#define inline __inline
-#endif
-
 #define EINPROGRESS WSAEINPROGRESS
 
 #define snprintf sprintf_s
