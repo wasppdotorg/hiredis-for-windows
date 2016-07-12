@@ -1,9 +1,12 @@
-[![Build Status](https://travis-ci.org/redis/hiredis.png)](https://travis-ci.org/redis/hiredis)
+
+# HIREDIS FOR WINDOWS
 
 * https://github.com/redis/hiredis (0.13.3)
 * https://github.com/koenvandesande/hiredis
 
 # HIREDIS
+
+[![Build Status](https://travis-ci.org/redis/hiredis.png)](https://travis-ci.org/redis/hiredis)
 
 Hiredis is a minimalistic C client library for the [Redis](http://redis.io/) database.
 
