@@ -36,10 +36,14 @@
 #include "read.h"
 #include <stdarg.h> /* for va_list */
 
+#ifdef _WIN32
 #include <WinSock2.h>
 #include <WS2tcpip.h>
+#endif
 
-//#include <sys/time.h> /* for struct timeval */
+#ifndef _WIN32
+#include <sys/time.h> /* for struct timeval */
+#endif
 
 #include <stdint.h> /* uintXX_t, etc */
 #include "sds.h" /* for sds */
@@ -138,7 +142,9 @@ void redisFreeSdsCommand(sds cmd);
 
 enum redisConnectionType {
     REDIS_CONN_TCP,
-    //REDIS_CONN_UNIX,
+#ifndef _WIN32
+    REDIS_CONN_UNIX,
+#endif
 };
 
 /* Context for a connection to Redis */
@@ -172,9 +178,12 @@ redisContext *redisConnectBindNonBlock(const char *ip, int port,
                                        const char *source_addr);
 redisContext *redisConnectBindNonBlockWithReuse(const char *ip, int port,
                                                 const char *source_addr);
-//redisContext *redisConnectUnix(const char *path);
-//redisContext *redisConnectUnixWithTimeout(const char *path, const struct timeval tv);
-//redisContext *redisConnectUnixNonBlock(const char *path);
+
+#ifndef _WIN32
+redisContext *redisConnectUnix(const char *path);
+redisContext *redisConnectUnixWithTimeout(const char *path, const struct timeval tv);
+redisContext *redisConnectUnixNonBlock(const char *path);
+#endif
 redisContext *redisConnectFd(int fd);
 
 /**

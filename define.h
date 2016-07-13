@@ -1,6 +1,8 @@
 
-#ifndef DEFINE_H
-#define DEFINE_H
+#ifndef __DEFINE_H
+#define __DEFINE_H
+
+#ifdef _WIN32
 
 #undef EINPROGRESS
 #define EINPROGRESS WSAEINPROGRESS
@@ -12,4 +14,6 @@
 #define strncasecmp _strnicmp
 #define strerror_r(errorno, buf, len) strerror_s(buf, len, errorno)
 
-#endif // DEFINE_H
+#endif // _WIN32
+
+#endif // __DEFINE_H

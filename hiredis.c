@@ -35,7 +35,9 @@
 #include <string.h>
 #include <stdlib.h>
 
-//#include <unistd.h>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 #include <assert.h>
 #include <errno.h>
@@ -621,7 +623,11 @@ void redisFree(redisContext *c) {
     if (c == NULL)
         return;
     if (c->fd > 0)
+#ifdef _WIN32
         closesocket(c->fd);
+#else
+        close(c->fd);
+#endif
     if (c->obuf != NULL)
         sdsfree(c->obuf);
     if (c->reader != NULL)
@@ -649,7 +655,11 @@ int redisReconnect(redisContext *c) {
     memset(c->errstr, '\0', strlen(c->errstr));
 
     if (c->fd > 0) {
+#ifdef _WIN32
         closesocket(c->fd);
+#else
+        close(c->fd);
+#endif
     }
 
     sdsfree(c->obuf);
@@ -661,8 +671,10 @@ int redisReconnect(redisContext *c) {
     if (c->connection_type == REDIS_CONN_TCP) {
         return redisContextConnectBindTcp(c, c->tcp.host, c->tcp.port,
                 c->timeout, c->tcp.source_addr);
-    //} else if (c->connection_type == REDIS_CONN_UNIX) {
-    //    return redisContextConnectUnix(c, c->unix_sock.path, c->timeout);
+#ifndef _WIN32
+    } else if (c->connection_type == REDIS_CONN_UNIX) {
+        return redisContextConnectUnix(c, c->unix_sock.path, c->timeout);
+#endif
     } else {
         /* Something bad happened here and shouldn't have. There isn't
            enough information in the context to reconnect. */
@@ -728,7 +740,7 @@ redisContext *redisConnectBindNonBlockWithReuse(const char *ip, int port,
     return c;
 }
 
-/*
+#ifndef _WIN32
 redisContext *redisConnectUnix(const char *path) {
     redisContext *c;
 
@@ -764,7 +776,7 @@ redisContext *redisConnectUnixNonBlock(const char *path) {
     redisContextConnectUnix(c,path,NULL);
     return c;
 }
-*/
+#endif
 
 redisContext *redisConnectFd(int fd) {
     redisContext *c;
@@ -805,7 +817,11 @@ int redisBufferRead(redisContext *c) {
     if (c->err)
         return REDIS_ERR;
 
+#ifdef _WIN32
     nread = recv(c->fd,buf,sizeof(buf), 0);
+#else
+    nread = read(c->fd, buf, sizeof(buf));
+#endif
     if (nread == -1) {
         if ((errno == EAGAIN && !(c->flags & REDIS_BLOCK)) || (errno == EINTR)) {
             /* Try again later */
@@ -842,7 +858,11 @@ int redisBufferWrite(redisContext *c, int *done) {
         return REDIS_ERR;
 
     if (sdslen(c->obuf) > 0) {
+#ifdef _WIN32
         nwritten = send(c->fd,c->obuf,sdslen(c->obuf), 0);
+#else
+        nwritten = write(c->fd, c->obuf, sdslen(c->obuf));
+#endif
         if (nwritten == -1) {
             if ((errno == EAGAIN && !(c->flags & REDIS_BLOCK)) || (errno == EINTR)) {
                 /* Try again later */
