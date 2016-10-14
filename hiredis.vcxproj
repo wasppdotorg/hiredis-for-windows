@@ -81,7 +81,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="async.h" />
-    <ClInclude Include="define.h" />
     <ClInclude Include="dict.h" />
     <ClInclude Include="fmacros.h" />
     <ClInclude Include="hiredis.h" />
