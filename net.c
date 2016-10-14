@@ -559,12 +559,6 @@ static int _redisContextConnectTcp(redisContext *c, const char *addr, int port,
 		c->tcp.source_addr = _strdup(source_addr);
 	}
 
-	WSADATA wsaData;
-	if ((rv = WSAStartup(MAKEWORD(2, 2), &wsaData)) != 0)
-	{
-		return REDIS_ERR;
-	}
-
 	snprintf(_port, 6, "%d", port);
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_INET;

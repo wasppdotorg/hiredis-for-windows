@@ -595,7 +595,41 @@ redisReader *redisReaderCreate(void) {
     return redisReaderCreateWithFunctions(&defaultFunctions);
 }
 
+#ifndef _WIN32
 static redisContext *redisContextInit(void) {
+    redisContext *c;
+
+    c = calloc(1,sizeof(redisContext));
+    if (c == NULL)
+        return NULL;
+
+    c->err = 0;
+    c->errstr[0] = '\0';
+    c->obuf = sdsempty();
+    c->reader = redisReaderCreate();
+    c->tcp.host = NULL;
+    c->tcp.source_addr = NULL;
+    c->unix_sock.path = NULL;
+    c->timeout = NULL;
+
+    if (c->obuf == NULL || c->reader == NULL) {
+        redisFree(c);
+        return NULL;
+    }
+
+    return c;
+}
+#endif
+
+static redisContext *redisContextInit(void) {
+	int rv;
+	WSADATA wsaData;
+
+	if ((rv = WSAStartup(MAKEWORD(2, 2), &wsaData)) != 0)
+	{
+		return NULL;
+	}
+
     redisContext *c;
 
     c = calloc(1,sizeof(redisContext));
