@@ -659,6 +659,8 @@ void redisFree(redisContext *c) {
 	if (c->timeout)
 		free(c->timeout);
 	free(c);
+
+	WSACleanup();
 }
 
 int redisFreeKeepFd(redisContext *c) {
