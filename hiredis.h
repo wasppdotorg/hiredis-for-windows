@@ -34,19 +34,21 @@
 #ifndef __HIREDIS_H
 #define __HIREDIS_H
 #include "read.h"
-#include <stdarg.h> /* for va_list */
-
-#ifdef _WIN32
-#include <WinSock2.h>
-#include <WS2tcpip.h>
-#endif
 
 #ifndef _WIN32
+#include <stdarg.h> /* for va_list */
 #include <sys/time.h> /* for struct timeval */
-#endif
+#include <stdint.h> /* uintXX_t, etc */
+#include "sds.h" /* for sds */
+#else
+#include <WinSock2.h>
+#include <WS2tcpip.h>
+
+#include <stdarg.h> /* for va_list */
 
 #include <stdint.h> /* uintXX_t, etc */
 #include "sds.h" /* for sds */
+#endif
 
 #define HIREDIS_MAJOR 0
 #define HIREDIS_MINOR 13
@@ -142,9 +144,7 @@ void redisFreeSdsCommand(sds cmd);
 
 enum redisConnectionType {
     REDIS_CONN_TCP,
-#ifndef _WIN32
     REDIS_CONN_UNIX,
-#endif
 };
 
 /* Context for a connection to Redis */
@@ -178,7 +178,6 @@ redisContext *redisConnectBindNonBlock(const char *ip, int port,
                                        const char *source_addr);
 redisContext *redisConnectBindNonBlockWithReuse(const char *ip, int port,
                                                 const char *source_addr);
-
 #ifndef _WIN32
 redisContext *redisConnectUnix(const char *path);
 redisContext *redisConnectUnixWithTimeout(const char *path, const struct timeval tv);

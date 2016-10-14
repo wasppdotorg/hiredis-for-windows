@@ -34,11 +34,9 @@
 #include "fmacros.h"
 #include <string.h>
 #include <stdlib.h>
-
 #ifndef _WIN32
 #include <unistd.h>
 #endif
-
 #include <assert.h>
 #include <errno.h>
 #include <ctype.h>
@@ -47,7 +45,9 @@
 #include "net.h"
 #include "sds.h"
 
-#include "define.h"
+#ifdef _WIN32
+#define strerror_r(errorno, buf, len) strerror_s(buf, len, errorno)
+#endif
 
 static redisReply *createReplyObject(int type);
 static void *createStringObject(const redisReadTask *task, char *str, size_t len);
@@ -619,15 +619,12 @@ static redisContext *redisContextInit(void) {
     return c;
 }
 
+#ifndef _WIN32
 void redisFree(redisContext *c) {
     if (c == NULL)
         return;
     if (c->fd > 0)
-#ifdef _WIN32
-        closesocket(c->fd);
-#else
         close(c->fd);
-#endif
     if (c->obuf != NULL)
         sdsfree(c->obuf);
     if (c->reader != NULL)
@@ -642,6 +639,27 @@ void redisFree(redisContext *c) {
         free(c->timeout);
     free(c);
 }
+#endif
+
+void redisFree(redisContext *c) {
+	if (c == NULL)
+		return;
+	if (c->fd > 0)
+		closesocket(c->fd);
+	if (c->obuf != NULL)
+		sdsfree(c->obuf);
+	if (c->reader != NULL)
+		redisReaderFree(c->reader);
+	if (c->tcp.host)
+		free(c->tcp.host);
+	if (c->tcp.source_addr)
+		free(c->tcp.source_addr);
+	if (c->unix_sock.path)
+		free(c->unix_sock.path);
+	if (c->timeout)
+		free(c->timeout);
+	free(c);
+}
 
 int redisFreeKeepFd(redisContext *c) {
     int fd = c->fd;
@@ -650,16 +668,13 @@ int redisFreeKeepFd(redisContext *c) {
     return fd;
 }
 
+#ifndef _WIN32
 int redisReconnect(redisContext *c) {
     c->err = 0;
     memset(c->errstr, '\0', strlen(c->errstr));
 
     if (c->fd > 0) {
-#ifdef _WIN32
-        closesocket(c->fd);
-#else
         close(c->fd);
-#endif
     }
 
     sdsfree(c->obuf);
@@ -671,10 +686,8 @@ int redisReconnect(redisContext *c) {
     if (c->connection_type == REDIS_CONN_TCP) {
         return redisContextConnectBindTcp(c, c->tcp.host, c->tcp.port,
                 c->timeout, c->tcp.source_addr);
-#ifndef _WIN32
     } else if (c->connection_type == REDIS_CONN_UNIX) {
         return redisContextConnectUnix(c, c->unix_sock.path, c->timeout);
-#endif
     } else {
         /* Something bad happened here and shouldn't have. There isn't
            enough information in the context to reconnect. */
@@ -682,6 +695,34 @@ int redisReconnect(redisContext *c) {
     }
 
     return REDIS_ERR;
+}
+#endif
+
+int redisReconnect(redisContext *c) {
+	c->err = 0;
+	memset(c->errstr, '\0', strlen(c->errstr));
+
+	if (c->fd > 0) {
+		closesocket(c->fd);
+	}
+
+	sdsfree(c->obuf);
+	redisReaderFree(c->reader);
+
+	c->obuf = sdsempty();
+	c->reader = redisReaderCreate();
+
+	if (c->connection_type == REDIS_CONN_TCP) {
+		return redisContextConnectBindTcp(c, c->tcp.host, c->tcp.port,
+			c->timeout, c->tcp.source_addr);
+	}
+	else {
+		/* Something bad happened here and shouldn't have. There isn't
+		enough information in the context to reconnect. */
+		__redisSetError(c, REDIS_ERR_OTHER, "Not enough information to reconnect");
+	}
+
+	return REDIS_ERR;
 }
 
 /* Connect to a Redis instance. On error the field error in the returned
@@ -809,6 +850,7 @@ int redisEnableKeepAlive(redisContext *c) {
  *
  * After this function is called, you may use redisContextReadReply to
  * see if there is a reply available. */
+#ifndef _WIN32
 int redisBufferRead(redisContext *c) {
     char buf[1024*16];
     int nread;
@@ -817,11 +859,7 @@ int redisBufferRead(redisContext *c) {
     if (c->err)
         return REDIS_ERR;
 
-#ifdef _WIN32
-    nread = recv(c->fd,buf,sizeof(buf), 0);
-#else
-    nread = read(c->fd, buf, sizeof(buf));
-#endif
+    nread = read(c->fd,buf,sizeof(buf));
     if (nread == -1) {
         if ((errno == EAGAIN && !(c->flags & REDIS_BLOCK)) || (errno == EINTR)) {
             /* Try again later */
@@ -840,6 +878,38 @@ int redisBufferRead(redisContext *c) {
     }
     return REDIS_OK;
 }
+#endif
+
+int redisBufferRead(redisContext *c) {
+	char buf[1024 * 16];
+	int nread;
+
+	/* Return early when the context has seen an error. */
+	if (c->err)
+		return REDIS_ERR;
+
+	nread = recv(c->fd, buf, sizeof(buf), 0);
+	if (nread == -1) {
+		if ((errno == EAGAIN && !(c->flags & REDIS_BLOCK)) || (errno == EINTR)) {
+			/* Try again later */
+		}
+		else {
+			__redisSetError(c, REDIS_ERR_IO, NULL);
+			return REDIS_ERR;
+		}
+	}
+	else if (nread == 0) {
+		__redisSetError(c, REDIS_ERR_EOF, "Server closed the connection");
+		return REDIS_ERR;
+	}
+	else {
+		if (redisReaderFeed(c->reader, buf, nread) != REDIS_OK) {
+			__redisSetError(c, c->reader->err, c->reader->errstr);
+			return REDIS_ERR;
+		}
+	}
+	return REDIS_OK;
+}
 
 /* Write the output buffer to the socket.
  *
@@ -850,6 +920,7 @@ int redisBufferRead(redisContext *c) {
  * Returns REDIS_ERR if an error occured trying to write and sets
  * c->errstr to hold the appropriate error string.
  */
+#ifndef _WIN32
 int redisBufferWrite(redisContext *c, int *done) {
     int nwritten;
 
@@ -858,11 +929,7 @@ int redisBufferWrite(redisContext *c, int *done) {
         return REDIS_ERR;
 
     if (sdslen(c->obuf) > 0) {
-#ifdef _WIN32
-        nwritten = send(c->fd,c->obuf,sdslen(c->obuf), 0);
-#else
-        nwritten = write(c->fd, c->obuf, sdslen(c->obuf));
-#endif
+        nwritten = write(c->fd,c->obuf,sdslen(c->obuf));
         if (nwritten == -1) {
             if ((errno == EAGAIN && !(c->flags & REDIS_BLOCK)) || (errno == EINTR)) {
                 /* Try again later */
@@ -881,6 +948,39 @@ int redisBufferWrite(redisContext *c, int *done) {
     }
     if (done != NULL) *done = (sdslen(c->obuf) == 0);
     return REDIS_OK;
+}
+#endif
+
+int redisBufferWrite(redisContext *c, int *done) {
+	int nwritten;
+
+	/* Return early when the context has seen an error. */
+	if (c->err)
+		return REDIS_ERR;
+
+	if (sdslen(c->obuf) > 0) {
+		nwritten = send(c->fd, c->obuf, sdslen(c->obuf), 0);
+		if (nwritten == -1) {
+			if ((errno == EAGAIN && !(c->flags & REDIS_BLOCK)) || (errno == EINTR)) {
+				/* Try again later */
+			}
+			else {
+				__redisSetError(c, REDIS_ERR_IO, NULL);
+				return REDIS_ERR;
+			}
+		}
+		else if (nwritten > 0) {
+			if (nwritten == (signed)sdslen(c->obuf)) {
+				sdsfree(c->obuf);
+				c->obuf = sdsempty();
+			}
+			else {
+				sdsrange(c->obuf, nwritten, -1);
+			}
+		}
+	}
+	if (done != NULL) *done = (sdslen(c->obuf) == 0);
+	return REDIS_OK;
 }
 
 /* Internal helper function to try and get a reply from the reader,
