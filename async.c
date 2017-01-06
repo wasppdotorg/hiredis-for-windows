@@ -32,7 +32,7 @@
 #include "fmacros.h"
 #include <stdlib.h>
 #include <string.h>
-#ifndef _WIN32
+#ifndef _MSC_VER
 #include <strings.h>
 #endif
 #include <assert.h>
@@ -43,7 +43,7 @@
 #include "dict.c"
 #include "sds.h"
 
-#ifdef _WIN32
+#ifdef _MSC_VER
 #define strcasecmp strcmp
 #define strncasecmp _strnicmp
 #endif
@@ -191,7 +191,7 @@ redisAsyncContext *redisAsyncConnectBindWithReuse(const char *ip, int port,
     return ac;
 }
 
-#ifndef _WIN32
+#ifndef _MSC_VER
 redisAsyncContext *redisAsyncConnectUnix(const char *path) {
     redisContext *c;
     redisAsyncContext *ac;

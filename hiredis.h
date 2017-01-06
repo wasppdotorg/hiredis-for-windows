@@ -35,7 +35,7 @@
 #define __HIREDIS_H
 #include "read.h"
 #include <stdarg.h> /* for va_list */
-#ifndef _WIN32
+#ifndef _MSC_VER
 #include <sys/time.h> /* for struct timeval */
 #endif
 #include <stdint.h> /* uintXX_t, etc */
@@ -135,7 +135,7 @@ void redisFreeSdsCommand(sds cmd);
 
 enum redisConnectionType {
     REDIS_CONN_TCP,
-#ifndef _WIN32
+#ifndef _MSC_VER
     REDIS_CONN_UNIX,
 #endif
 };
@@ -171,7 +171,7 @@ redisContext *redisConnectBindNonBlock(const char *ip, int port,
                                        const char *source_addr);
 redisContext *redisConnectBindNonBlockWithReuse(const char *ip, int port,
                                                 const char *source_addr);
-#ifndef _WIN32
+#ifndef _MSC_VER
 redisContext *redisConnectUnix(const char *path);
 redisContext *redisConnectUnixWithTimeout(const char *path, const struct timeval tv);
 redisContext *redisConnectUnixNonBlock(const char *path);

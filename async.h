@@ -105,7 +105,7 @@ redisAsyncContext *redisAsyncConnect(const char *ip, int port);
 redisAsyncContext *redisAsyncConnectBind(const char *ip, int port, const char *source_addr);
 redisAsyncContext *redisAsyncConnectBindWithReuse(const char *ip, int port,
                                                   const char *source_addr);
-#ifndef _WIN32
+#ifndef _MSC_VER
 redisAsyncContext *redisAsyncConnectUnix(const char *path);
 #endif
 int redisAsyncSetConnectCallback(redisAsyncContext *ac, redisConnectCallback *fn);

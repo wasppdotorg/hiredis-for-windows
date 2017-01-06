@@ -34,7 +34,7 @@
 #include "fmacros.h"
 #include <string.h>
 #include <stdlib.h>
-#ifndef _WIN32
+#ifndef _MSC_VER
 #include <unistd.h>
 #endif
 #include <assert.h>
@@ -45,9 +45,11 @@
 #include "net.h"
 #include "sds.h"
 
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include <WinSock2.h>
 #define strerror_r(err_no, buf, len) strerror_s(buf, len, err_no)
+#define read(s, buf, len) recv(s, buf, len, 0)
+#define write(s, buf, len) send(s, buf, len, 0)
 #define close closesocket
 #endif
 
@@ -600,7 +602,7 @@ redisReader *redisReaderCreate(void) {
 static redisContext *redisContextInit(void) {
     redisContext *c;
 
-#ifdef _WIN32
+#ifdef _MSC_VER
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != NO_ERROR) {
         return NULL;
@@ -647,7 +649,7 @@ void redisFree(redisContext *c) {
         free(c->timeout);
     free(c);
 
-#ifdef _WIN32
+#ifdef _MSC_VER
     WSACleanup();
 #endif
 }
@@ -676,7 +678,7 @@ int redisReconnect(redisContext *c) {
     if (c->connection_type == REDIS_CONN_TCP) {
         return redisContextConnectBindTcp(c, c->tcp.host, c->tcp.port,
                 c->timeout, c->tcp.source_addr);
-#ifndef _WIN32
+#ifndef _MSC_VER
     } else if (c->connection_type == REDIS_CONN_UNIX) {
         return redisContextConnectUnix(c, c->unix_sock.path, c->timeout);
 #endif
@@ -745,7 +747,7 @@ redisContext *redisConnectBindNonBlockWithReuse(const char *ip, int port,
     return c;
 }
 
-#ifndef _WIN32
+#ifndef _MSC_VER
 redisContext *redisConnectUnix(const char *path) {
     redisContext *c;
 
@@ -822,11 +824,7 @@ int redisBufferRead(redisContext *c) {
     if (c->err)
         return REDIS_ERR;
 
-#ifndef _WIN32
     nread = read(c->fd,buf,sizeof(buf));
-#else
-    nread = recv(c->fd, buf, sizeof(buf), 0);
-#endif
     if (nread == -1) {
         if ((errno == EAGAIN && !(c->flags & REDIS_BLOCK)) || (errno == EINTR)) {
             /* Try again later */
@@ -863,11 +861,7 @@ int redisBufferWrite(redisContext *c, int *done) {
         return REDIS_ERR;
 
     if (sdslen(c->obuf) > 0) {
-#ifndef _WIN32
         nwritten = write(c->fd,c->obuf,sdslen(c->obuf));
-#else
-        nwritten = send(c->fd, c->obuf, sdslen(c->obuf), 0);
-#endif
         if (nwritten == -1) {
             if ((errno == EAGAIN && !(c->flags & REDIS_BLOCK)) || (errno == EINTR)) {
                 /* Try again later */

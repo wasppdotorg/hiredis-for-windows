@@ -34,7 +34,7 @@
 
 #include "fmacros.h"
 #include <sys/types.h>
-#ifndef _WIN32
+#ifndef _MSC_VER
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <sys/un.h>
@@ -45,13 +45,13 @@
 #endif
 #include <fcntl.h>
 #include <string.h>
-#ifndef _WIN32
+#ifndef _MSC_VER
 #include <netdb.h>
 #endif
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
-#ifndef _WIN32
+#ifndef _MSC_VER
 #include <poll.h>
 #endif
 #include <limits.h>
@@ -60,7 +60,7 @@
 #include "net.h"
 #include "sds.h"
 
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 
@@ -119,7 +119,7 @@ static int redisCreateSocket(redisContext *c, int type) {
     return REDIS_OK;
 }
 
-#ifndef _WIN32
+#ifndef _MSC_VER
 static int redisSetBlocking(redisContext *c, int blocking) {
     int flags;
 
@@ -214,7 +214,7 @@ static int redisSetTcpNoDelay(redisContext *c) {
 
 #define __MAX_MSEC (((LONG_MAX) - 999) / 1000)
 
-#ifndef _WIN32
+#ifndef _MSC_VER
 static int redisContextWaitReady(redisContext *c, const struct timeval *timeout) {
     struct pollfd   wfd[1];
     long msec;
@@ -491,7 +491,7 @@ int redisContextConnectBindTcp(redisContext *c, const char *addr, int port,
     return _redisContextConnectTcp(c, addr, port, timeout, source_addr);
 }
 
-#ifndef _WIN32
+#ifndef _MSC_VER
 int redisContextConnectUnix(redisContext *c, const char *path, const struct timeval *timeout) {
     int blocking = (c->flags & REDIS_BLOCK);
     struct sockaddr_un sa;
