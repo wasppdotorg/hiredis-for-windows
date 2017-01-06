@@ -146,17 +146,17 @@ static int redisSetBlocking(redisContext *c, int blocking) {
 }
 #else
 static int redisSetBlocking(redisContext *c, int blocking) {
-	unsigned long mode = 1;
-	if (blocking) { mode = 0; }
+    unsigned long mode = 1;
+    if (blocking) { mode = 0; }
 
-	if (ioctlsocket(c->fd, FIONBIO, &mode) != NO_ERROR) {
-		SET_ERR_NO;
-		__redisSetErrorFromErrno(c, REDIS_ERR_IO, "fcntl(F_GETFL)");
-		redisContextCloseFd(c);
-		return REDIS_ERR;
-	}
+    if (ioctlsocket(c->fd, FIONBIO, &mode) != NO_ERROR) {
+        SET_ERR_NO;
+        __redisSetErrorFromErrno(c, REDIS_ERR_IO, "fcntl(F_GETFL)");
+        redisContextCloseFd(c);
+        return REDIS_ERR;
+    }
 
-	return REDIS_OK;
+    return REDIS_OK;
 }
 #endif
 
@@ -264,44 +264,44 @@ static int redisContextWaitReady(redisContext *c, const struct timeval *timeout)
 }
 #else
 static int redisContextWaitReady(redisContext *c, const struct timeval *timeout) {
-	fd_set wfd;
-	long msec = -1;
+    fd_set wfd;
+    long msec = -1;
 
-	/* Only use timeout when not NULL. */
-	if (timeout != NULL) {
-		if (timeout->tv_usec > 1000000 || timeout->tv_sec > __MAX_MSEC) {
-			__redisSetErrorFromErrno(c, REDIS_ERR_IO, NULL);
-			redisContextCloseFd(c);
-			return REDIS_ERR;
-		}
+    /* Only use timeout when not NULL. */
+    if (timeout != NULL) {
+        if (timeout->tv_usec > 1000000 || timeout->tv_sec > __MAX_MSEC) {
+            __redisSetErrorFromErrno(c, REDIS_ERR_IO, NULL);
+            redisContextCloseFd(c);
+            return REDIS_ERR;
+        }
 
-		msec = (timeout->tv_sec * 1000) + ((timeout->tv_usec + 999) / 1000);
+        msec = (timeout->tv_sec * 1000) + ((timeout->tv_usec + 999) / 1000);
 
-		if (msec < 0 || msec > INT_MAX) {
-			msec = INT_MAX;
-		}
-	}
+        if (msec < 0 || msec > INT_MAX) {
+            msec = INT_MAX;
+        }
+    }
 
-	if (errno == EINPROGRESS || errno == WSAEWOULDBLOCK) {
-		FD_ZERO(&wfd);
-		FD_SET(c->fd, &wfd);
+    if (errno == EINPROGRESS || errno == WSAEWOULDBLOCK) {
+        FD_ZERO(&wfd);
+        FD_SET(c->fd, &wfd);
 
-		if (select(FD_SETSIZE, NULL, &wfd, NULL, timeout) == -1) {
-			SET_ERR_NO;
-			__redisSetErrorFromErrno(c, REDIS_ERR_IO, "poll(2)");
-			redisContextCloseFd(c);
-			return REDIS_ERR;
-		}
+        if (select(FD_SETSIZE, NULL, &wfd, NULL, timeout) == -1) {
+            SET_ERR_NO;
+            __redisSetErrorFromErrno(c, REDIS_ERR_IO, "poll(2)");
+            redisContextCloseFd(c);
+            return REDIS_ERR;
+        }
 
-		if (redisCheckSocketError(c) != REDIS_OK)
-			return REDIS_ERR;
+        if (redisCheckSocketError(c) != REDIS_OK)
+            return REDIS_ERR;
 
-		return REDIS_OK;
-	}
+        return REDIS_OK;
+    }
 
-	__redisSetErrorFromErrno(c, REDIS_ERR_IO, NULL);
-	redisContextCloseFd(c);
-	return REDIS_ERR;
+    __redisSetErrorFromErrno(c, REDIS_ERR_IO, NULL);
+    redisContextCloseFd(c);
+    return REDIS_ERR;
 }
 #endif
 

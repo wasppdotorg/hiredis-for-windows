@@ -601,10 +601,10 @@ static redisContext *redisContextInit(void) {
     redisContext *c;
 
 #ifdef _WIN32
-	WSADATA wsaData;
-	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != NO_ERROR) {
-		return NULL;
-	}
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != NO_ERROR) {
+        return NULL;
+    }
 #endif
 
     c = calloc(1,sizeof(redisContext));
@@ -648,7 +648,7 @@ void redisFree(redisContext *c) {
     free(c);
 
 #ifdef _WIN32
-	WSACleanup();
+    WSACleanup();
 #endif
 }
 
@@ -825,7 +825,7 @@ int redisBufferRead(redisContext *c) {
 #ifndef _WIN32
     nread = read(c->fd,buf,sizeof(buf));
 #else
-	nread = recv(c->fd, buf, sizeof(buf), 0);
+    nread = recv(c->fd, buf, sizeof(buf), 0);
 #endif
     if (nread == -1) {
         if ((errno == EAGAIN && !(c->flags & REDIS_BLOCK)) || (errno == EINTR)) {
@@ -866,7 +866,7 @@ int redisBufferWrite(redisContext *c, int *done) {
 #ifndef _WIN32
         nwritten = write(c->fd,c->obuf,sdslen(c->obuf));
 #else
-		nwritten = send(c->fd, c->obuf, sdslen(c->obuf), 0);
+        nwritten = send(c->fd, c->obuf, sdslen(c->obuf), 0);
 #endif
         if (nwritten == -1) {
             if ((errno == EAGAIN && !(c->flags & REDIS_BLOCK)) || (errno == EINTR)) {
