@@ -43,6 +43,11 @@
 #include "dict.c"
 #include "sds.h"
 
+#ifdef _WIN32
+#define strcasecmp strcmp
+#define strncasecmp _strnicmp
+#endif
+
 #define _EL_ADD_READ(ctx) do { \
         if ((ctx)->ev.addRead) (ctx)->ev.addRead((ctx)->ev.data); \
     } while(0)
@@ -365,7 +370,6 @@ void redisAsyncDisconnect(redisAsyncContext *ac) {
         __redisAsyncDisconnect(ac);
 }
 
-#ifndef _WIN32
 static int __redisGetSubscribeCallback(redisAsyncContext *ac, redisReply *reply, redisCallback *dstcb) {
     redisContext *c = &(ac->c);
     dict *callbacks;
@@ -411,55 +415,6 @@ static int __redisGetSubscribeCallback(redisAsyncContext *ac, redisReply *reply,
         __redisShiftCallback(&ac->sub.invalid,dstcb);
     }
     return REDIS_OK;
-}
-#endif
-
-static int __redisGetSubscribeCallback(redisAsyncContext *ac, redisReply *reply, redisCallback *dstcb) {
-	redisContext *c = &(ac->c);
-	dict *callbacks;
-	dictEntry *de;
-	int pvariant;
-	char *stype;
-	sds sname;
-
-	/* Custom reply functions are not supported for pub/sub. This will fail
-	* very hard when they are used... */
-	if (reply->type == REDIS_REPLY_ARRAY) {
-		assert(reply->elements >= 2);
-		assert(reply->element[0]->type == REDIS_REPLY_STRING);
-		stype = reply->element[0]->str;
-		pvariant = (tolower(stype[0]) == 'p') ? 1 : 0;
-
-		if (pvariant)
-			callbacks = ac->sub.patterns;
-		else
-			callbacks = ac->sub.channels;
-
-		/* Locate the right callback */
-		assert(reply->element[1]->type == REDIS_REPLY_STRING);
-		sname = sdsnewlen(reply->element[1]->str, reply->element[1]->len);
-		de = dictFind(callbacks, sname);
-		if (de != NULL) {
-			memcpy(dstcb, dictGetEntryVal(de), sizeof(*dstcb));
-
-			/* If this is an unsubscribe message, remove it. */
-			if (strcmp(stype + pvariant, "unsubscribe") == 0) {
-				dictDelete(callbacks, sname);
-
-				/* If this was the last unsubscribe message, revert to
-				* non-subscribe mode. */
-				assert(reply->element[2]->type == REDIS_REPLY_INTEGER);
-				if (reply->element[2]->integer == 0)
-					c->flags &= ~REDIS_SUBSCRIBED;
-			}
-		}
-		sdsfree(sname);
-	}
-	else {
-		/* Shift callback for invalid commands. */
-		__redisShiftCallback(&ac->sub.invalid, dstcb);
-	}
-	return REDIS_OK;
 }
 
 void redisProcessCallbacks(redisAsyncContext *ac) {
@@ -634,7 +589,6 @@ static const char *nextArgument(const char *start, const char **str, size_t *len
 /* Helper function for the redisAsyncCommand* family of functions. Writes a
  * formatted command to the output buffer and registers the provided callback
  * function with the context. */
-#ifndef _WIN32
 static int __redisAsyncCommand(redisAsyncContext *ac, redisCallbackFn *fn, void *privdata, const char *cmd, size_t len) {
     redisContext *c = &(ac->c);
     redisCallback cb;
@@ -700,77 +654,6 @@ static int __redisAsyncCommand(redisAsyncContext *ac, redisCallbackFn *fn, void 
     _EL_ADD_WRITE(ac);
 
     return REDIS_OK;
-}
-#endif
-
-static int __redisAsyncCommand(redisAsyncContext *ac, redisCallbackFn *fn, void *privdata, const char *cmd, size_t len) {
-	redisContext *c = &(ac->c);
-	redisCallback cb;
-	int pvariant, hasnext;
-	const char *cstr, *astr;
-	size_t clen, alen;
-	const char *p;
-	sds sname;
-	int ret;
-
-	/* Don't accept new commands when the connection is about to be closed. */
-	if (c->flags & (REDIS_DISCONNECTING | REDIS_FREEING)) return REDIS_ERR;
-
-	/* Setup callback */
-	cb.fn = fn;
-	cb.privdata = privdata;
-
-	/* Find out which command will be appended. */
-	p = nextArgument(cmd, &cstr, &clen);
-	assert(p != NULL);
-	hasnext = (p[0] == '$');
-	pvariant = (tolower(cstr[0]) == 'p') ? 1 : 0;
-	cstr += pvariant;
-	clen -= pvariant;
-
-	if (hasnext && _strnicmp(cstr, "subscribe\r\n", 11) == 0) {
-		c->flags |= REDIS_SUBSCRIBED;
-
-		/* Add every channel/pattern to the list of subscription callbacks. */
-		while ((p = nextArgument(p, &astr, &alen)) != NULL) {
-			sname = sdsnewlen(astr, alen);
-			if (pvariant)
-				ret = dictReplace(ac->sub.patterns, sname, &cb);
-			else
-				ret = dictReplace(ac->sub.channels, sname, &cb);
-
-			if (ret == 0) sdsfree(sname);
-		}
-	}
-	else if (_strnicmp(cstr, "unsubscribe\r\n", 13) == 0) {
-		/* It is only useful to call (P)UNSUBSCRIBE when the context is
-		* subscribed to one or more channels or patterns. */
-		if (!(c->flags & REDIS_SUBSCRIBED)) return REDIS_ERR;
-
-		/* (P)UNSUBSCRIBE does not have its own response: every channel or
-		* pattern that is unsubscribed will receive a message. This means we
-		* should not append a callback function for this command. */
-	}
-	else if (_strnicmp(cstr, "monitor\r\n", 9) == 0) {
-		/* Set monitor flag and push callback */
-		c->flags |= REDIS_MONITORING;
-		__redisPushCallback(&ac->replies, &cb);
-	}
-	else {
-		if (c->flags & REDIS_SUBSCRIBED)
-			/* This will likely result in an error reply, but it needs to be
-			* received and passed to the callback. */
-			__redisPushCallback(&ac->sub.invalid, &cb);
-		else
-			__redisPushCallback(&ac->replies, &cb);
-	}
-
-	__redisAppendCommand(c, cmd, len);
-
-	/* Always schedule a write when the write buffer is non-empty */
-	_EL_ADD_WRITE(ac);
-
-	return REDIS_OK;
 }
 
 int redisvAsyncCommand(redisAsyncContext *ac, redisCallbackFn *fn, void *privdata, const char *format, va_list ap) {

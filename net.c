@@ -32,9 +32,9 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _WIN32
 #include "fmacros.h"
 #include <sys/types.h>
+#ifndef _WIN32
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <sys/un.h>
@@ -42,68 +42,46 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#endif
 #include <fcntl.h>
 #include <string.h>
+#ifndef _WIN32
 #include <netdb.h>
+#endif
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
+#ifndef _WIN32
 #include <poll.h>
+#endif
 #include <limits.h>
 #include <stdlib.h>
-#else
-#include <WinSock2.h>
-#include <WS2tcpip.h>
 
-#include "fmacros.h"
-#include <sys/types.h>
-
-
-
-
-
-
-
-#include <fcntl.h>
-#include <string.h>
-
-#include <errno.h>
-#include <stdarg.h>
-#include <stdio.h>
-
-#include <limits.h>
-#include <stdlib.h>
+#include "net.h"
+#include "sds.h"
 
 #ifdef _WIN32
-#define strerror_r(errorno, buf, len) strerror_s(buf, len, errorno)
-#endif
+#include <WinSock2.h>
+#include <WS2tcpip.h>
 
 #define SET_ERR_NO err = WSAGetLastError()
 #undef errno
 int err = EINPROGRESS;
 #define errno err
-#endif
 
-#include "net.h"
-#include "sds.h"
+#define strdup _strdup
+#define strerror_r(errorno, buf, len) strerror_s(buf, len, errorno)
+#define close closesocket
+#endif
 
 /* Defined in hiredis.c */
 void __redisSetError(redisContext *c, int type, const char *str);
 
-#ifndef _WIN32
 static void redisContextCloseFd(redisContext *c) {
     if (c && c->fd >= 0) {
         close(c->fd);
         c->fd = -1;
     }
-}
-#endif
-
-static void redisContextCloseFd(redisContext *c) {
-	if (c && c->fd >= 0) {
-		closesocket(c->fd);
-		c->fd = -1;
-	}
 }
 
 static void __redisSetErrorFromErrno(redisContext *c, int type, const char *prefix) {
@@ -166,21 +144,21 @@ static int redisSetBlocking(redisContext *c, int blocking) {
     }
     return REDIS_OK;
 }
-#endif
-
+#else
 static int redisSetBlocking(redisContext *c, int blocking) {
-	unsigned long flag = 1;
-	if (blocking) { flag = 0; }
+	unsigned long mode = 1;
+	if (blocking) { mode = 0; }
 
-	if (ioctlsocket(c->fd, FIONBIO, &flag) != NO_ERROR) {
+	if (ioctlsocket(c->fd, FIONBIO, &mode) != NO_ERROR) {
 		SET_ERR_NO;
-		__redisSetErrorFromErrno(c, REDIS_ERR_IO, "fcntl(F_SETFL)");
-		closesocket(c->fd);
+		__redisSetErrorFromErrno(c, REDIS_ERR_IO, "fcntl(F_GETFL)");
+		redisContextCloseFd(c);
 		return REDIS_ERR;
 	}
 
 	return REDIS_OK;
 }
+#endif
 
 int redisKeepAlive(redisContext *c, int interval) {
     int val = 1;
@@ -284,8 +262,7 @@ static int redisContextWaitReady(redisContext *c, const struct timeval *timeout)
     redisContextCloseFd(c);
     return REDIS_ERR;
 }
-#endif
-
+#else
 static int redisContextWaitReady(redisContext *c, const struct timeval *timeout) {
 	fd_set wfd;
 	long msec = -1;
@@ -311,14 +288,9 @@ static int redisContextWaitReady(redisContext *c, const struct timeval *timeout)
 
 		if (select(FD_SETSIZE, NULL, &wfd, NULL, timeout) == -1) {
 			SET_ERR_NO;
-			__redisSetErrorFromErrno(c, REDIS_ERR_IO, "select(2)");
-			closesocket(c->fd);
+			__redisSetErrorFromErrno(c, REDIS_ERR_IO, "poll(2)");
+			redisContextCloseFd(c);
 			return REDIS_ERR;
-		}
-
-		if (!FD_ISSET(c->fd, &wfd)) {
-			errno = WSAETIMEDOUT;
-			__redisSetErrorFromErrno(c, REDIS_ERR_IO, NULL);
 		}
 
 		if (redisCheckSocketError(c) != REDIS_OK)
@@ -331,6 +303,7 @@ static int redisContextWaitReady(redisContext *c, const struct timeval *timeout)
 	redisContextCloseFd(c);
 	return REDIS_ERR;
 }
+#endif
 
 int redisCheckSocketError(redisContext *c) {
     int err = 0;
@@ -362,7 +335,6 @@ int redisContextSetTimeout(redisContext *c, const struct timeval tv) {
     return REDIS_OK;
 }
 
-#ifndef _WIN32
 static int _redisContextConnectTcp(redisContext *c, const char *addr, int port,
                                    const struct timeval *timeout,
                                    const char *source_addr) {
@@ -506,158 +478,6 @@ error:
 end:
     freeaddrinfo(servinfo);
     return rv;  // Need to return REDIS_OK if alright
-}
-#endif
-
-static int _redisContextConnectTcp(redisContext *c, const char *addr, int port,
-	const struct timeval *timeout,
-	const char *source_addr) {
-	int s, rv, n;
-	char _port[6];  /* strlen("65535"); */
-	struct addrinfo hints, *servinfo, *bservinfo, *p, *b;
-	int blocking = (c->flags & REDIS_BLOCK);
-	int reuseaddr = (c->flags & REDIS_REUSEADDR);
-	int reuses = 0;
-
-	c->connection_type = REDIS_CONN_TCP;
-	c->tcp.port = port;
-
-	/* We need to take possession of the passed parameters
-	* to make them reusable for a reconnect.
-	* We also carefully check we don't free data we already own,
-	* as in the case of the reconnect method.
-	*
-	* This is a bit ugly, but atleast it works and doesn't leak memory.
-	**/
-	if (c->tcp.host != addr) {
-		if (c->tcp.host)
-			free(c->tcp.host);
-
-		c->tcp.host = _strdup(addr);
-	}
-
-	if (timeout) {
-		if (c->timeout != timeout) {
-			if (c->timeout == NULL)
-				c->timeout = malloc(sizeof(struct timeval));
-
-			memcpy(c->timeout, timeout, sizeof(struct timeval));
-		}
-	}
-	else {
-		if (c->timeout)
-			free(c->timeout);
-		c->timeout = NULL;
-	}
-
-	if (source_addr == NULL) {
-		free(c->tcp.source_addr);
-		c->tcp.source_addr = NULL;
-	}
-	else if (c->tcp.source_addr != source_addr) {
-		free(c->tcp.source_addr);
-		c->tcp.source_addr = _strdup(source_addr);
-	}
-
-	snprintf(_port, 6, "%d", port);
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_STREAM;
-
-	/* Try with IPv6 if no IPv4 address was found. We do it in this order since
-	* in a Redis client you can't afford to test if you have IPv6 connectivity
-	* as this would add latency to every connect. Otherwise a more sensible
-	* route could be: Use IPv6 if both addresses are available and there is IPv6
-	* connectivity. */
-	if ((rv = getaddrinfo(c->tcp.host, _port, &hints, &servinfo)) != 0) {
-		hints.ai_family = AF_INET6;
-		if ((rv = getaddrinfo(addr, _port, &hints, &servinfo)) != 0) {
-			__redisSetError(c, REDIS_ERR_OTHER, gai_strerror(rv));
-			return REDIS_ERR;
-		}
-	}
-	for (p = servinfo; p != NULL; p = p->ai_next) {
-	addrretry:
-		if ((s = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1)
-			continue;
-
-		c->fd = s;
-		if (redisSetBlocking(c, 0) != REDIS_OK)
-			goto error;
-		if (c->tcp.source_addr) {
-			int bound = 0;
-			/* Using getaddrinfo saves us from self-determining IPv4 vs IPv6 */
-			if ((rv = getaddrinfo(c->tcp.source_addr, NULL, &hints, &bservinfo)) != 0) {
-				char buf[128];
-				snprintf(buf, sizeof(buf), "Can't get addr: %s", gai_strerror(rv));
-				__redisSetError(c, REDIS_ERR_OTHER, buf);
-				goto error;
-			}
-
-			if (reuseaddr) {
-				n = 1;
-				if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (char*)&n,
-					sizeof(n)) < 0) {
-					goto error;
-				}
-			}
-
-			for (b = bservinfo; b != NULL; b = b->ai_next) {
-				if (bind(s, b->ai_addr, b->ai_addrlen) != -1) {
-					bound = 1;
-					break;
-				}
-			}
-			freeaddrinfo(bservinfo);
-			if (!bound) {
-				char buf[128];
-				snprintf(buf, sizeof(buf), "Can't bind socket: %s", strerror(errno));
-				__redisSetError(c, REDIS_ERR_OTHER, buf);
-				goto error;
-			}
-		}
-		if (connect(s, p->ai_addr, p->ai_addrlen) == -1) {
-			if (errno == EHOSTUNREACH) {
-				redisContextCloseFd(c);
-				continue;
-			}
-			else if (errno == EINPROGRESS && !blocking) {
-				/* This is ok. */
-			}
-			else if (errno == EADDRNOTAVAIL && reuseaddr) {
-				if (++reuses >= REDIS_CONNECT_RETRIES) {
-					goto error;
-				}
-				else {
-					goto addrretry;
-				}
-			}
-			else {
-				if (redisContextWaitReady(c, c->timeout) != REDIS_OK)
-					goto error;
-			}
-		}
-		if (blocking && redisSetBlocking(c, 1) != REDIS_OK)
-			goto error;
-		if (redisSetTcpNoDelay(c) != REDIS_OK)
-			goto error;
-
-		c->flags |= REDIS_CONNECTED;
-		rv = REDIS_OK;
-		goto end;
-	}
-	if (p == NULL) {
-		char buf[128];
-		snprintf(buf, sizeof(buf), "Can't create socket: %s", strerror(errno));
-		__redisSetError(c, REDIS_ERR_OTHER, buf);
-		goto error;
-	}
-
-error:
-	rv = REDIS_ERR;
-end:
-	freeaddrinfo(servinfo);
-	return rv;  // Need to return REDIS_OK if alright
 }
 
 int redisContextConnectTcp(redisContext *c, const char *addr, int port,
