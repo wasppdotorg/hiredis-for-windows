@@ -164,7 +164,9 @@ typedef struct redisContext {
 
 } redisContext;
 
+#ifndef _MSC_VER
 redisContext *redisConnect(const char *ip, int port);
+#endif
 redisContext *redisConnectWithTimeout(const char *ip, int port, const struct timeval tv);
 redisContext *redisConnectNonBlock(const char *ip, int port);
 redisContext *redisConnectBindNonBlock(const char *ip, int port,

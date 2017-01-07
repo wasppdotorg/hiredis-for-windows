@@ -70,7 +70,7 @@ int err = EINPROGRESS;
 #define errno err
 
 #define strdup _strdup
-#define strerror_r(errorno, buf, len) strerror_s(buf, len, errorno)
+#define strerror_r(err_no, buf, len) strerror_s(buf, len, err_no)
 #define close closesocket
 #endif
 
